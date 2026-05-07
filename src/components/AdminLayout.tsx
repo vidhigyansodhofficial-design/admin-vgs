@@ -1,5 +1,5 @@
-import React, { ReactNode, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { ReactNode, useState, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
@@ -11,7 +11,8 @@ import {
   Menu, 
   X,
   GraduationCap,
-  Bell
+  Bell,
+  LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,15 @@ function SidebarItem({ to, icon: Icon, label, onClick }: SidebarItemProps) {
 
 export function AdminLayout({ children }: { children: ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  
+  const sessionStr = localStorage.getItem('adminSession');
+  const adminData = sessionStr ? JSON.parse(sessionStr) : { full_name: 'Administrator', role: 'admin' };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminSession');
+    navigate('/login');
+  };
 
   const sidebarItems = [
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
@@ -82,12 +92,19 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </nav>
           </ScrollArea>
           <div className="bg-primary/5 border-t border-sidebar-border p-4 mt-auto">
-            <div className="flex items-center gap-3 px-2 py-2">
-              <div className="h-8 w-8 rounded-full bg-accent shadow-sm flex items-center justify-center text-accent-foreground text-[10px] font-bold">AS</div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-white">Senior Admin</span>
-                <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Adv. Sameer</span>
+            <div className="flex items-center justify-between px-2 py-2">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-accent shadow-sm flex items-center justify-center text-accent-foreground text-[10px] font-bold">
+                  {adminData.full_name?.substring(0,2).toUpperCase() || 'AD'}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-white truncate max-w-[100px]">{adminData.full_name || 'Admin'}</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider">{adminData.role || 'Admin'}</span>
+                </div>
               </div>
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="text-slate-400 hover:text-rose-500 hover:bg-rose-500/10">
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>

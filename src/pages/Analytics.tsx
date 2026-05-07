@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { 
   BarChart3, 
   Users, 
@@ -24,6 +25,7 @@ import {
   Cell
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from '../lib/supabase';
 
 const activityData = [
   { name: '00:00', value: 45 },
@@ -35,13 +37,6 @@ const activityData = [
   { name: '23:59', value: 180 },
 ];
 
-const completionData = [
-  { name: 'Course A', completed: 85, inProgress: 15 },
-  { name: 'Course B', completed: 60, inProgress: 40 },
-  { name: 'Course C', completed: 45, inProgress: 55 },
-  { name: 'Course D', completed: 92, inProgress: 8 },
-];
-
 const sourceData = [
   { name: 'Direct', value: 400 },
   { name: 'Referral', value: 300 },
@@ -51,6 +46,75 @@ const sourceData = [
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658'];
 
 export default function Analytics() {
+  const [stats, setStats] = useState({
+    completionRate: 0,
+    activeLearners: 0,
+    totalCourses: 0,
+    avgScore: 0
+  });
+  const [completionData, setCompletionData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAnalyticsData();
+
+    const enrollmentsChannel = supabase.channel('analytics-enroll').on('postgres_changes', { event: '*', schema: 'public', table: 'user_course_enrollments' }, fetchAnalyticsData).subscribe();
+    const coursesChannel = supabase.channel('analytics-courses').on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, fetchAnalyticsData).subscribe();
+
+    return () => {
+      supabase.removeChannel(enrollmentsChannel);
+      supabase.removeChannel(coursesChannel);
+    };
+  }, []);
+
+  const fetchAnalyticsData = async () => {
+    try {
+      setLoading(true);
+      const [
+        { data: enrollments },
+        { data: courses },
+        { count: userCount }
+      ] = await Promise.all([
+        supabase.from('user_course_enrollments').select('*'),
+        supabase.from('courses').select('*'),
+        supabase.from('users').select('*', { count: 'exact', head: true })
+      ]);
+
+      if (enrollments && courses) {
+        const completedCount = enrollments.filter(e => e.completed).length;
+        const totalEnroll = enrollments.length;
+        const compRate = totalEnroll > 0 ? (completedCount / totalEnroll) * 100 : 0;
+
+        const totalRating = courses.reduce((acc, c) => acc + (parseFloat(c.rating) || 0), 0);
+        const avgRating = courses.length > 0 ? totalRating / courses.length : 0;
+
+        setStats({
+          completionRate: compRate,
+          activeLearners: userCount || 0,
+          totalCourses: courses.length,
+          avgScore: avgRating
+        });
+
+        // Calculate course completion
+        const compData = courses.slice(0, 4).map(course => {
+          const courseEnrolls = enrollments.filter(e => e.course_id === course.id);
+          const cCount = courseEnrolls.filter(e => e.completed).length;
+          const cRate = courseEnrolls.length > 0 ? Math.round((cCount / courseEnrolls.length) * 100) : 0;
+          return {
+            name: course.title,
+            completed: cRate,
+            inProgress: 100 - cRate
+          };
+        });
+        setCompletionData(compData);
+      }
+    } catch (error) {
+      console.error("Error fetching analytics", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -76,10 +140,10 @@ export default function Analytics() {
                 <Target className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-black text-foreground">76.4%</div>
+                <div className="text-2xl font-black text-foreground">{stats.completionRate.toFixed(1)}%</div>
                 <div className="flex items-center text-[10px] text-emerald-600 mt-1 font-bold italic">
                   <ArrowUpRight className="mr-1 h-3 w-3" />
-                  +4.2% Growth
+                  Live Sync
                 </div>
               </CardContent>
             </Card>
@@ -89,23 +153,23 @@ export default function Analytics() {
                 <Zap className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-black text-foreground">1,842</div>
-                <div className="flex items-center text-[10px] text-rose-600 mt-1 font-bold italic">
-                  <ArrowUpRight className="mr-1 h-3 w-3 rotate-90" />
-                  -2.1% Today
+                <div className="text-2xl font-black text-foreground">{stats.activeLearners}</div>
+                <div className="flex items-center text-[10px] text-emerald-600 mt-1 font-bold italic">
+                  <ArrowUpRight className="mr-1 h-3 w-3" />
+                  Live Sync
                 </div>
               </CardContent>
             </Card>
             <Card className="glass-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Learning Hours</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Total Courses</CardTitle>
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-black text-foreground">14.2k</div>
+                <div className="text-2xl font-black text-foreground">{stats.totalCourses}</div>
                 <div className="flex items-center text-[10px] text-emerald-600 mt-1 font-bold italic">
                   <ArrowUpRight className="mr-1 h-3 w-3" />
-                  +15% Total
+                  Live Sync
                 </div>
               </CardContent>
             </Card>
@@ -115,7 +179,7 @@ export default function Analytics() {
                 <BarChart3 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-black text-foreground">4.82/5</div>
+                <div className="text-2xl font-black text-foreground">{stats.avgScore.toFixed(2)}/5</div>
                 <div className="flex items-center text-[10px] text-muted-foreground/60 mt-1 font-bold italic">
                   Top 5% Global
                 </div>
@@ -199,10 +263,11 @@ export default function Analytics() {
             </CardHeader>
             <CardContent>
               <div className="space-y-10 py-4">
+                {completionData.length === 0 && <p className="text-sm text-muted-foreground">No course completion data available.</p>}
                 {completionData.map((item, i) => (
                   <div key={i} className="space-y-3">
                     <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-widest">
-                      <span className="text-foreground">{item.name}</span>
+                      <span className="text-foreground line-clamp-1 max-w-[60%]">{item.name}</span>
                       <span className="text-primary">{item.completed}% Success</span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
